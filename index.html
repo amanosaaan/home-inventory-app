@@ -173,7 +173,6 @@
 
 <script>
 var STALE_DAYS = 30;
-var LOW_STOCK = 1;
 var inventory = [];
 var categories = [];
 var html5QrCode = null;
@@ -282,15 +281,29 @@ function showQuickAdjust(item) {
   var el = document.getElementById('scanResultCard');
   el.style.display = 'block';
   el.innerHTML =
-    '<div class="item-row">' +
-      '<div><div class="item-name">' + item['商品名'] + '</div>' +
-      '<div class="item-meta">' + item['カテゴリ'] + ' ・ 前回更新から' + item['経過日数'] + '日</div></div>' +
-      '<div class="item-qty">' + item['数量'] + item['単位'] + '</div>' +
-    '</div>' +
-    '<div class="btn-row" style="margin-top:12px;">' +
+    '<div class="pill" style="margin-bottom:8px;">✅ 登録済みの商品です</div>' +
+    '<div class="item-name" style="font-size:17px;margin-bottom:8px;">' + item['商品名'] + '</div>' +
+    '<table style="width:100%;font-size:13px;color:var(--muted);border-collapse:collapse;margin-bottom:10px;">' +
+      '<tr><td style="padding:3px 0;width:80px;">カテゴリ</td><td style="padding:3px 0;color:var(--text);">' + item['カテゴリ'] + '</td></tr>' +
+      '<tr><td style="padding:3px 0;">現在の数量</td><td style="padding:3px 0;color:var(--text);">' + item['数量'] + item['単位'] + '</td></tr>' +
+      '<tr><td style="padding:3px 0;">最終更新</td><td style="padding:3px 0;color:var(--text);">' + item['最終更新日時'] + '(' + item['経過日数'] + '日前)</td></tr>' +
+      (item['メモ'] ? '<tr><td style="padding:3px 0;">メモ</td><td style="padding:3px 0;color:var(--text);">' + item['メモ'] + '</td></tr>' : '') +
+    '</table>' +
+    '<div class="btn-row">' +
       '<button class="btn secondary" onclick="doAdjust(\'' + item['ID'] + '\', -1)">−1 使った</button>' +
       '<button class="btn" onclick="doAdjust(\'' + item['ID'] + '\', 1)">+1 買い足した</button>' +
+    '</div>' +
+    '<label style="margin-top:10px;">まとめて追加する数量</label>' +
+    '<div class="btn-row">' +
+      '<input id="quickAddQty" type="number" value="1" min="1" style="margin-bottom:0;">' +
+      '<button class="btn" style="flex:1;" onclick="doAdjustFromInput(\'' + item['ID'] + '\')">この数だけ追加</button>' +
     '</div>';
+}
+
+function doAdjustFromInput(id) {
+  var qty = Number(document.getElementById('quickAddQty').value) || 0;
+  if (qty <= 0) return;
+  doAdjust(id, qty);
 }
 
 function doAdjust(id, delta) {
@@ -380,12 +393,10 @@ function renderList() {
 
 function renderItemCard(item) {
   var isStale = item['経過日数'] >= STALE_DAYS;
-  var isLow = Number(item['数量']) <= LOW_STOCK;
   return '<div class="card ' + (isStale ? 'stale' : '') + '">' +
     '<div class="item-row">' +
       '<div><div class="item-name">' + item['商品名'] + '</div>' +
-      '<div class="item-meta">' + item['カテゴリ'] + ' ・ 更新: ' + item['最終更新日時'] + '(' + item['経過日数'] + '日前)' +
-        (isLow ? ' ・ <b style="color:#e0503c;">在庫少</b>' : '') + '</div></div>' +
+      '<div class="item-meta">' + item['カテゴリ'] + ' ・ 更新: ' + item['最終更新日時'] + '(' + item['経過日数'] + '日前)</div></div>' +
       '<div class="qty-btns">' +
         '<button class="minus" onclick="doAdjust(\'' + item['ID'] + '\', -1)">−</button>' +
         '<span class="item-qty">' + item['数量'] + item['単位'] + '</span>' +
