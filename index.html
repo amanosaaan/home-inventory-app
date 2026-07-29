@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>おうち在庫管理</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root {
+    --accent: #ff8552;
+    --accent-dark: #e56b3a;
+    --bg: #fbf7f2;
+    --card: #ffffff;
+    --text: #2b2620;
+    --muted: #8a8078;
+    --warn: #e0503c;
+    --warn-bg: #fdeceb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding-bottom: 70px;
+  }
+  header {
+    background: var(--accent);
+    color: #fff;
+    padding: 16px 20px;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  main { padding: 16px; max-width: 640px; margin: 0 auto; }
+  .tabbar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: flex; background: #fff; border-top: 1px solid #eee;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
+  }
+  .tabbar button {
+    flex: 1; border: none; background: none; padding: 10px 4px 8px;
+    font-size: 12px; color: var(--muted); cursor: pointer;
+  }
+  .tabbar button.active { color: var(--accent-dark); font-weight: 700; }
+  .tabbar .icon { display: block; font-size: 20px; margin-bottom: 2px; }
+  .tab { display: none; }
+  .tab.active { display: block; }
+
+  .card {
+    background: var(--card); border-radius: 14px; padding: 14px 16px;
+    margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .item-row { display: flex; justify-content: space-between; align-items: center; }
+  .item-name { font-weight: 700; font-size: 15px; }
+  .item-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .item-qty { font-size: 18px; font-weight: 700; min-width: 46px; text-align: center; }
+  .qty-btns { display: flex; gap: 6px; align-items: center; }
+  .qty-btns button {
+    width: 34px; height: 34px; border-radius: 50%; border: none;
+    background: var(--accent); color: #fff; font-size: 18px; cursor: pointer;
+  }
+  .qty-btns button.minus { background: #cfc7be; }
+  .stale { border-left: 4px solid var(--warn); background: var(--warn-bg); }
+  .stale .item-meta { color: var(--warn); font-weight: 600; }
+
+  input, select, textarea {
+    width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;
+    font-size: 15px; margin-bottom: 10px; background: #fff; color: var(--text);
+  }
+  label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 4px; }
+  .btn {
+    display: inline-block; width: 100%; padding: 12px; border: none; border-radius: 10px;
+    background: var(--accent); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  .btn.secondary { background: #efe9e2; color: var(--text); }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row .btn { flex: 1; }
+
+  #reader { width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 12px; }
+  .search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .search-row input { margin-bottom: 0; }
+  .pill {
+    display: inline-block; font-size: 11px; padding: 3px 8px; border-radius: 999px;
+    background: #f1ece4; color: var(--muted); margin-top: 4px;
+  }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 14px; }
+  h3 { font-size: 15px; margin: 4px 0 10px; }
+  .loading { text-align: center; color: var(--muted); padding: 20px; }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .stat-num { font-size: 24px; font-weight: 800; color: var(--accent-dark); }
+  .stat-label { font-size: 12px; color: var(--muted); }
+  #setupCard textarea, #setupCard input { font-family: monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header>🏠 おうち在庫管理</header>
+
+<main>
+
+  <!-- 初回セットアップ:GAS API URL登録 -->
+  <div class="card" id="setupCard" style="display:none;">
+    <h3>⚙️ 初回設定</h3>
+    <p class="item-meta">GASを「ウェブアプリ」としてデプロイしたときに発行される exec で終わるURLを貼り付けてください。</p>
+    <input id="apiUrlInput" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+    <button class="btn" onclick="saveApiUrl()">保存して開始</button>
+  </div>
+
+  <!-- スキャンタブ -->
+  <section id="tab-scan" class="tab active">
+    <div class="card">
+      <div id="reader"></div>
+      <div class="btn-row">
+        <button class="btn" id="startScanBtn">📷 カメラでスキャン開始</button>
+        <button class="btn secondary" id="stopScanBtn" style="display:none;">停止</button>
+      </div>
+      <p class="pill" id="scanStatus">バーコードを枠内に映してください</p>
+    </div>
+
+    <div class="card">
+      <h3>✍️ 手動で入力</h3>
+      <button class="btn secondary" id="manualOpenBtn">バーコードなしで登録・調整する</button>
+    </div>
+
+    <div id="scanResultCard" class="card" style="display:none;"></div>
+  </section>
+
+  <!-- 一覧タブ -->
+  <section id="tab-list" class="tab">
+    <div class="search-row">
+      <input type="text" id="searchBox" placeholder="商品名で検索">
+      <select id="filterCategory" style="width:130px;"></select>
+    </div>
+    <div class="card" id="staleBanner" style="display:none;"></div>
+    <div id="listContainer"><div class="loading">読み込み中...</div></div>
+  </section>
+
+  <!-- カテゴリタブ -->
+  <section id="tab-category" class="tab">
+    <div id="categoryContainer"><div class="loading">読み込み中...</div></div>
+  </section>
+
+  <!-- 可視化タブ -->
+  <section id="tab-viz" class="tab">
+    <div class="stat-grid">
+      <div class="card"><div class="stat-num" id="statTotalItems">-</div><div class="stat-label">登録アイテム数</div></div>
+      <div class="card"><div class="stat-num" id="statStale">-</div><div class="stat-label">30日以上放置</div></div>
+    </div>
+    <div class="card">
+      <h3>カテゴリ別 在庫数</h3>
+      <canvas id="chartCategory" height="180"></canvas>
+    </div>
+    <div class="card">
+      <h3>直近14日の増減件数</h3>
+      <canvas id="chartLog" height="180"></canvas>
+    </div>
+  </section>
+
+</main>
+
+<div class="tabbar">
+  <button class="tab-btn active" data-tab="scan"><span class="icon">📷</span>スキャン</button>
+  <button class="tab-btn" data-tab="list"><span class="icon">📋</span>一覧</button>
+  <button class="tab-btn" data-tab="category"><span class="icon">🗂️</span>カテゴリ</button>
+  <button class="tab-btn" data-tab="viz"><span class="icon">📊</span>可視化</button>
+</div>
+
+<script>
+var STALE_DAYS = 30;
+var LOW_STOCK = 1;
+var inventory = [];
+var categories = [];
+var html5QrCode = null;
+var API_URL = localStorage.getItem('inventoryApiUrl') || '';
+
+if (!API_URL) {
+  document.getElementById('setupCard').style.display = 'block';
+}
+
+function saveApiUrl() {
+  var url = document.getElementById('apiUrlInput').value.trim();
+  if (!url) return;
+  localStorage.setItem('inventoryApiUrl', url);
+  API_URL = url;
+  document.getElementById('setupCard').style.display = 'none';
+  loadAll(renderList);
+}
+
+// ---------- API通信ヘルパー ----------
+function apiGet(action, params) {
+  var url = API_URL + '?action=' + action;
+  if (params) {
+    Object.keys(params).forEach(function (k) { url += '&' + k + '=' + encodeURIComponent(params[k]); });
+  }
+  return fetch(url).then(function (r) { return r.json(); });
+}
+
+function apiPost(body) {
+  return fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // preflightを避けるためtext/plainで送る
+    body: JSON.stringify(body)
+  }).then(function (r) { return r.json(); });
+}
+
+// ---------- タブ切り替え ----------
+document.querySelectorAll('.tab-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+    document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'list') renderList();
+    if (btn.dataset.tab === 'category') renderCategoryView();
+    if (btn.dataset.tab === 'viz') renderViz();
+  });
+});
+
+// ---------- データ読み込み ----------
+function loadAll(callback) {
+  if (!API_URL) return;
+  apiGet('inventory').then(function (items) {
+    inventory = items;
+    return apiGet('categories');
+  }).then(function (cats) {
+    categories = cats;
+    populateCategorySelects();
+    if (callback) callback();
+  });
+}
+
+function populateCategorySelects() {
+  var filterSel = document.getElementById('filterCategory');
+  filterSel.innerHTML = '<option value="">全カテゴリ</option>' +
+    categories.map(function (c) { return '<option value="' + c + '">' + c + '</option>'; }).join('');
+}
+
+// ---------- バーコードスキャン ----------
+document.getElementById('startScanBtn').addEventListener('click', function () {
+  document.getElementById('startScanBtn').style.display = 'none';
+  document.getElementById('stopScanBtn').style.display = 'inline-block';
+  html5QrCode = new Html5Qrcode('reader');
+  html5QrCode.start(
+    { facingMode: 'environment' },
+    { fps: 10, qrbox: { width: 250, height: 120 } },
+    onScanSuccess,
+    function () {}
+  ).catch(function (err) {
+    document.getElementById('scanStatus').textContent = 'カメラを起動できませんでした: ' + err;
+  });
+});
+
+document.getElementById('stopScanBtn').addEventListener('click', stopScanner);
+
+function stopScanner() {
+  if (html5QrCode) {
+    html5QrCode.stop().catch(function () {});
+  }
+  document.getElementById('startScanBtn').style.display = 'inline-block';
+  document.getElementById('stopScanBtn').style.display = 'none';
+}
+
+function onScanSuccess(decodedText) {
+  stopScanner();
+  document.getElementById('scanStatus').textContent = '読み取ったコード: ' + decodedText;
+  apiGet('lookup', { barcode: decodedText }).then(function (item) {
+    if (item) {
+      showQuickAdjust(item);
+    } else {
+      showNewItemForm(decodedText);
+    }
+  });
+}
+
+function showQuickAdjust(item) {
+  var el = document.getElementById('scanResultCard');
+  el.style.display = 'block';
+  el.innerHTML =
+    '<div class="item-row">' +
+      '<div><div class="item-name">' + item['商品名'] + '</div>' +
+      '<div class="item-meta">' + item['カテゴリ'] + ' ・ 前回更新から' + item['経過日数'] + '日</div></div>' +
+      '<div class="item-qty">' + item['数量'] + item['単位'] + '</div>' +
+    '</div>' +
+    '<div class="btn-row" style="margin-top:12px;">' +
+      '<button class="btn secondary" onclick="doAdjust(\'' + item['ID'] + '\', -1)">−1 使った</button>' +
+      '<button class="btn" onclick="doAdjust(\'' + item['ID'] + '\', 1)">+1 買い足した</button>' +
+    '</div>';
+}
+
+function doAdjust(id, delta) {
+  apiPost({ action: 'adjustQuantity', id: id, delta: delta }).then(function (res) {
+    if (res.success) {
+      loadAll();
+      document.getElementById('scanResultCard').innerHTML = '<p class="pill">✅ 数量を' + res.newQty + 'に更新しました</p>';
+    }
+  });
+}
+
+function showNewItemForm(barcode) {
+  var el = document.getElementById('scanResultCard');
+  el.style.display = 'block';
+  el.innerHTML =
+    '<h3>新しいアイテムを登録</h3>' +
+    '<label>商品名</label><input id="newName" placeholder="例: お茶漬けの素 さけ">' +
+    '<label>カテゴリ</label>' +
+    '<select id="newCategory">' + categories.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select>' +
+    '<div class="btn-row">' +
+      '<div style="flex:1;"><label>数量</label><input id="newQty" type="number" value="1" min="0"></div>' +
+      '<div style="flex:1;"><label>単位</label><input id="newUnit" value="個"></div>' +
+    '</div>' +
+    '<label>メモ(任意)</label><input id="newMemo" placeholder="賞味期限など">' +
+    '<button class="btn" onclick="submitNewItem(\'' + barcode + '\')">登録する</button>';
+}
+
+function submitNewItem(barcode) {
+  var data = {
+    barcode: barcode,
+    name: document.getElementById('newName').value,
+    category: document.getElementById('newCategory').value,
+    qty: document.getElementById('newQty').value,
+    unit: document.getElementById('newUnit').value,
+    memo: document.getElementById('newMemo').value
+  };
+  if (!data.name) { alert('商品名を入力してください'); return; }
+  apiPost({ action: 'addNewItem', data: data }).then(function () {
+    loadAll();
+    document.getElementById('scanResultCard').innerHTML = '<p class="pill">✅ 「' + data.name + '」を登録しました</p>';
+  });
+}
+
+// ---------- 手動入力(バーコードなし) ----------
+document.getElementById('manualOpenBtn').addEventListener('click', function () {
+  showNewItemForm('');
+});
+
+// ---------- 一覧タブ ----------
+document.getElementById('searchBox').addEventListener('input', renderList);
+document.getElementById('filterCategory').addEventListener('change', renderList);
+
+function renderList() {
+  var q = document.getElementById('searchBox').value.trim();
+  var cat = document.getElementById('filterCategory').value;
+  var filtered = inventory.filter(function (item) {
+    var matchQ = !q || item['商品名'].indexOf(q) !== -1;
+    var matchC = !cat || item['カテゴリ'] === cat;
+    return matchQ && matchC;
+  });
+  filtered.sort(function (a, b) { return b['経過日数'] - a['経過日数']; });
+
+  var staleItems = inventory.filter(function (i) { return i['経過日数'] >= STALE_DAYS && i['数量'] > 0; });
+  var banner = document.getElementById('staleBanner');
+  if (staleItems.length > 0) {
+    banner.style.display = 'block';
+    banner.className = 'card stale';
+    banner.innerHTML = '⏰ <b>' + staleItems.length + '件</b> のアイテムが' + STALE_DAYS + '日以上動いていません。奥底に忘れられていませんか?';
+  } else {
+    banner.style.display = 'none';
+  }
+
+  var container = document.getElementById('listContainer');
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty">アイテムがありません</div>';
+    return;
+  }
+  container.innerHTML = filtered.map(renderItemCard).join('');
+}
+
+function renderItemCard(item) {
+  var isStale = item['経過日数'] >= STALE_DAYS;
+  var isLow = Number(item['数量']) <= LOW_STOCK;
+  return '<div class="card ' + (isStale ? 'stale' : '') + '">' +
+    '<div class="item-row">' +
+      '<div><div class="item-name">' + item['商品名'] + '</div>' +
+      '<div class="item-meta">' + item['カテゴリ'] + ' ・ 更新: ' + item['最終更新日時'] + '(' + item['経過日数'] + '日前)' +
+        (isLow ? ' ・ <b style="color:#e0503c;">在庫少</b>' : '') + '</div></div>' +
+      '<div class="qty-btns">' +
+        '<button class="minus" onclick="doAdjust(\'' + item['ID'] + '\', -1)">−</button>' +
+        '<span class="item-qty">' + item['数量'] + item['単位'] + '</span>' +
+        '<button onclick="doAdjust(\'' + item['ID'] + '\', 1)">＋</button>' +
+      '</div>' +
+    '</div></div>';
+}
+
+// ---------- カテゴリタブ ----------
+function renderCategoryView() {
+  var container = document.getElementById('categoryContainer');
+  if (inventory.length === 0) {
+    container.innerHTML = '<div class="empty">アイテムがありません</div>';
+    return;
+  }
+  var groups = {};
+  inventory.forEach(function (item) {
+    var c = item['カテゴリ'] || 'その他';
+    if (!groups[c]) groups[c] = [];
+    groups[c].push(item);
+  });
+  var html = '';
+  Object.keys(groups).sort().forEach(function (cat) {
+    html += '<h3>' + cat + '(' + groups[cat].length + ')</h3>';
+    html += groups[cat].map(renderItemCard).join('');
+  });
+  container.innerHTML = html;
+}
+
+// ---------- 可視化タブ ----------
+var chartCategoryInstance = null;
+var chartLogInstance = null;
+
+function renderViz() {
+  document.getElementById('statTotalItems').textContent = inventory.length;
+  var staleCount = inventory.filter(function (i) { return i['経過日数'] >= STALE_DAYS && i['数量'] > 0; }).length;
+  document.getElementById('statStale').textContent = staleCount;
+
+  var catCounts = {};
+  inventory.forEach(function (item) {
+    var c = item['カテゴリ'] || 'その他';
+    catCounts[c] = (catCounts[c] || 0) + Number(item['数量']);
+  });
+  var ctx1 = document.getElementById('chartCategory').getContext('2d');
+  if (chartCategoryInstance) chartCategoryInstance.destroy();
+  chartCategoryInstance = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: Object.keys(catCounts),
+      datasets: [{ label: '在庫数', data: Object.values(catCounts), backgroundColor: '#ff8552' }]
+    },
+    options: { plugins: { legend: { display: false } } }
+  });
+
+  apiGet('log', { days: 14 }).then(function (logs) {
+    var days = [];
+    var addCounts = [];
+    var useCounts = [];
+    for (var i = 13; i >= 0; i--) {
+      var d = new Date();
+      d.setDate(d.getDate() - i);
+      var label = (d.getMonth() + 1) + '/' + d.getDate();
+      days.push(label);
+      var dayLogs = logs.filter(function (l) {
+        var ld = new Date(l['日時']);
+        return ld.toDateString() === d.toDateString();
+      });
+      addCounts.push(dayLogs.filter(function (l) { return l['種別'] === '追加' || l['種別'] === '新規登録'; }).length);
+      useCounts.push(dayLogs.filter(function (l) { return l['種別'] === '消費'; }).length);
+    }
+    var ctx2 = document.getElementById('chartLog').getContext('2d');
+    if (chartLogInstance) chartLogInstance.destroy();
+    chartLogInstance = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: days,
+        datasets: [
+          { label: '追加', data: addCounts, backgroundColor: '#ff8552' },
+          { label: '消費', data: useCounts, backgroundColor: '#cfc7be' }
+        ]
+      },
+      options: { plugins: { legend: { position: 'bottom' } } }
+    });
+  });
+}
+
+// ---------- 初期化 ----------
+if (API_URL) loadAll(renderList);
+</script>
+
+</body>
+</html>
