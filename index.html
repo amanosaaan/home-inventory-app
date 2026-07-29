@@ -133,6 +133,10 @@
       <input type="text" id="searchBox" placeholder="商品名で検索">
       <select id="filterCategory" style="width:130px;"></select>
     </div>
+    <label style="display:flex;align-items:center;gap:6px;margin:-4px 0 10px;">
+      <input type="checkbox" id="showZero" style="width:auto;margin:0;">
+      <span style="font-size:13px;color:var(--muted);">在庫0のアイテムも表示</span>
+    </label>
     <div class="card" id="staleBanner" style="display:none;"></div>
     <div id="listContainer"><div class="loading">読み込み中...</div></div>
   </section>
@@ -338,6 +342,12 @@ document.getElementById('manualOpenBtn').addEventListener('click', function () {
 // ---------- 一覧タブ ----------
 document.getElementById('searchBox').addEventListener('input', renderList);
 document.getElementById('filterCategory').addEventListener('change', renderList);
+document.getElementById('showZero').addEventListener('change', function () {
+  showZeroItems = document.getElementById('showZero').checked;
+  renderList();
+});
+
+var showZeroItems = false;
 
 function renderList() {
   var q = document.getElementById('searchBox').value.trim();
@@ -345,7 +355,8 @@ function renderList() {
   var filtered = inventory.filter(function (item) {
     var matchQ = !q || item['商品名'].indexOf(q) !== -1;
     var matchC = !cat || item['カテゴリ'] === cat;
-    return matchQ && matchC;
+    var matchZero = showZeroItems || Number(item['数量']) > 0;
+    return matchQ && matchC && matchZero;
   });
   filtered.sort(function (a, b) { return b['経過日数'] - a['経過日数']; });
 
@@ -392,12 +403,18 @@ function renderCategoryView() {
   }
   var groups = {};
   inventory.forEach(function (item) {
+    if (!showZeroItems && Number(item['数量']) <= 0) return;
     var c = item['カテゴリ'] || 'その他';
     if (!groups[c]) groups[c] = [];
     groups[c].push(item);
   });
   var html = '';
-  Object.keys(groups).sort().forEach(function (cat) {
+  var catNames = Object.keys(groups).sort();
+  if (catNames.length === 0) {
+    container.innerHTML = '<div class="empty">アイテムがありません</div>';
+    return;
+  }
+  catNames.forEach(function (cat) {
     html += '<h3>' + cat + '(' + groups[cat].length + ')</h3>';
     html += groups[cat].map(renderItemCard).join('');
   });
