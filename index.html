@@ -79,6 +79,23 @@
   .btn-row .btn { flex: 1; }
 
   #reader { width: 100%; border-radius: 12px; overflow: hidden; margin-bottom: 12px; }
+  .qty-wheel {
+    position: relative; flex: 0 0 92px; height: 108px; overflow-y: auto;
+    scroll-snap-type: y mandatory; border: 1px solid #ddd; border-radius: 8px;
+    background: #fff; scrollbar-width: none;
+  }
+  .qty-wheel::-webkit-scrollbar { display: none; }
+  .qty-wheel-pad { height: 36px; }
+  .qty-wheel-item {
+    height: 36px; line-height: 36px; text-align: center; font-size: 15px;
+    color: var(--muted); scroll-snap-align: center;
+  }
+  .qty-wheel-item.selected { font-size: 20px; font-weight: 800; color: var(--text); }
+  .qty-wheel-highlight {
+    position: absolute; top: 36px; left: 0; right: 0; height: 36px;
+    border-top: 1px solid #eee; border-bottom: 1px solid #eee;
+    background: rgba(255,133,82,0.08); pointer-events: none;
+  }
   .search-row { display: flex; gap: 8px; margin-bottom: 12px; }
   .search-row input { margin-bottom: 0; }
   .pill {
@@ -294,14 +311,57 @@ function showQuickAdjust(item) {
       '<button class="btn" onclick="doAdjust(\'' + item['ID'] + '\', 1)">+1 買い足した</button>' +
     '</div>' +
     '<label style="margin-top:10px;">まとめて追加する数量</label>' +
-    '<div class="btn-row">' +
-      '<input id="quickAddQty" type="number" value="1" min="1" style="margin-bottom:0;">' +
+    '<div class="btn-row" style="align-items:center;">' +
+      buildQtyWheel('quickAddQtyWheel', 99) +
       '<button class="btn" style="flex:1;" onclick="doAdjustFromInput(\'' + item['ID'] + '\')">この数だけ追加</button>' +
     '</div>';
+  quickAddQtyValue = 1;
+  initQtyWheel('quickAddQtyWheel', function (v) { quickAddQtyValue = v; });
+}
+
+// ---------- ダイヤル式 数量ホイール ----------
+var quickAddQtyValue = 1;
+
+function buildQtyWheel(id, max) {
+  var items = '';
+  for (var i = 1; i <= max; i++) {
+    items += '<div class="qty-wheel-item" data-val="' + i + '">' + i + '</div>';
+  }
+  return '<div class="qty-wheel" id="' + id + '">' +
+    '<div class="qty-wheel-highlight"></div>' +
+    '<div class="qty-wheel-pad"></div>' + items + '<div class="qty-wheel-pad"></div>' +
+  '</div>';
+}
+
+function initQtyWheel(id, onChange) {
+  var el = document.getElementById(id);
+  var itemH = 36;
+  var items = el.querySelectorAll('.qty-wheel-item');
+  var scrollTimer = null;
+
+  function updateSelection() {
+    var idx = Math.round(el.scrollTop / itemH);
+    if (idx < 0) idx = 0;
+    if (idx > items.length - 1) idx = items.length - 1;
+    items.forEach(function (it) { it.classList.remove('selected'); });
+    var sel = items[idx];
+    if (sel) {
+      sel.classList.add('selected');
+      onChange(Number(sel.dataset.val));
+    }
+  }
+
+  el.addEventListener('scroll', function () {
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(updateSelection, 80);
+  });
+
+  el.scrollTop = 0;
+  updateSelection();
 }
 
 function doAdjustFromInput(id) {
-  var qty = Number(document.getElementById('quickAddQty').value) || 0;
+  var qty = quickAddQtyValue || 0;
   if (qty <= 0) return;
   doAdjust(id, qty);
 }
