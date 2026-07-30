@@ -194,6 +194,7 @@ var inventory = [];
 var categories = [];
 var html5QrCode = null;
 var API_URL = localStorage.getItem('inventoryApiUrl') || '';
+var currentTab = localStorage.getItem('inventoryActiveTab') || 'scan';
 
 if (!API_URL) {
   document.getElementById('setupCard').style.display = 'block';
@@ -205,7 +206,7 @@ function saveApiUrl() {
   localStorage.setItem('inventoryApiUrl', url);
   API_URL = url;
   document.getElementById('setupCard').style.display = 'none';
-  loadAll(renderList);
+  loadAll(renderCurrentTab);
 }
 
 // ---------- API通信ヘルパー ----------
@@ -226,15 +227,23 @@ function apiPost(body) {
 }
 
 // ---------- タブ切り替え ----------
+function activateTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.tab === tab); });
+  document.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('active', t.id === 'tab-' + tab); });
+  currentTab = tab;
+  localStorage.setItem('inventoryActiveTab', tab);
+}
+
+function renderCurrentTab() {
+  if (currentTab === 'list') renderList();
+  if (currentTab === 'category') renderCategoryView();
+  if (currentTab === 'viz') renderViz();
+}
+
 document.querySelectorAll('.tab-btn').forEach(function (btn) {
   btn.addEventListener('click', function () {
-    document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
-    document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-    if (btn.dataset.tab === 'list') renderList();
-    if (btn.dataset.tab === 'category') renderCategoryView();
-    if (btn.dataset.tab === 'viz') renderViz();
+    activateTab(btn.dataset.tab);
+    renderCurrentTab();
   });
 });
 
@@ -369,7 +378,7 @@ function doAdjustFromInput(id) {
 function doAdjust(id, delta) {
   apiPost({ action: 'adjustQuantity', id: id, delta: delta }).then(function (res) {
     if (res.success) {
-      loadAll();
+      loadAll(renderCurrentTab);
       document.getElementById('scanResultCard').innerHTML = '<p class="pill">✅ 数量を' + res.newQty + 'に更新しました</p>';
     }
   });
@@ -402,7 +411,7 @@ function submitNewItem(barcode) {
   };
   if (!data.name) { alert('商品名を入力してください'); return; }
   apiPost({ action: 'addNewItem', data: data }).then(function () {
-    loadAll();
+    loadAll(renderCurrentTab);
     document.getElementById('scanResultCard').innerHTML = '<p class="pill">✅ 「' + data.name + '」を登録しました</p>';
   });
 }
@@ -550,7 +559,8 @@ function renderViz() {
 }
 
 // ---------- 初期化 ----------
-if (API_URL) loadAll(renderList);
+activateTab(currentTab);
+if (API_URL) loadAll(renderCurrentTab);
 </script>
 
 </body>
